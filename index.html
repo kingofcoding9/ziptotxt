@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zip to Single Text File Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Custom scrollbar for the preview area */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #3b82f6;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
+
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <header class="text-center mb-10">
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-400 mb-2">
+                <i class="fa-solid fa-file-zipper mr-2"></i> Zip to Text Converter
+            </h1>
+            <p class="text-gray-400">Upload a .zip file to merge all contained code/text files into a single document.</p>
+        </header>
+
+        <!-- Main Card -->
+        <div class="bg-gray-800 rounded-xl shadow-2xl overflow-hidden border border-gray-700">
+            
+            <!-- Upload Zone -->
+            <div class="p-8">
+                <div id="drop-zone" class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center hover:border-blue-500 hover:bg-gray-750 transition-all cursor-pointer relative group">
+                    <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".zip">
+                    
+                    <div class="pointer-events-none">
+                        <i class="fa-solid fa-cloud-arrow-up text-5xl text-gray-500 mb-4 group-hover:text-blue-400 transition-colors"></i>
+                        <p class="text-lg font-semibold text-gray-300">Drag & drop a .zip file here</p>
+                        <p class="text-sm text-gray-500 mt-2">or click to browse</p>
+                    </div>
+                </div>
+
+                <!-- Status Bar -->
+                <div id="status-container" class="hidden mt-6 bg-gray-700 rounded-lg p-4 flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div id="loader" class="loader"></div>
+                        <span id="status-text" class="text-sm font-medium text-gray-200">Processing...</span>
+                    </div>
+                    <span id="file-count" class="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">0 files</span>
+                </div>
+            </div>
+
+            <!-- Configuration (Collapsible) -->
+            <div class="px-8 pb-4">
+                <details class="text-gray-400 text-sm cursor-pointer">
+                    <summary class="hover:text-blue-400 focus:outline-none">Advanced Options</summary>
+                    <div class="mt-3 p-4 bg-gray-900 rounded border border-gray-700">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="add-separators" checked class="form-checkbox text-blue-500 rounded bg-gray-700 border-gray-600">
+                            <span>Add strict separator lines between files</span>
+                        </label>
+                        <div class="mt-2 text-xs text-gray-500">
+                            By default, the tool ignores binary files (images, exe, etc.) and only includes text-based extensions.
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Output Area -->
+            <div id="output-section" class="hidden border-t border-gray-700 bg-gray-900/50 p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-gray-200">Preview</h2>
+                    <div class="flex space-x-2">
+                        <button id="copy-btn" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors flex items-center">
+                            <i class="fa-regular fa-copy mr-2"></i> Copy
+                        </button>
+                        <button id="download-btn" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors flex items-center shadow-lg shadow-blue-900/50">
+                            <i class="fa-solid fa-download mr-2"></i> Download .txt
+                        </button>
+                    </div>
+                </div>
+                
+                <textarea id="result-box" class="w-full h-96 bg-gray-950 text-gray-300 font-mono text-sm p-4 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500 custom-scrollbar resize-none" readonly placeholder="Converted text will appear here..."></textarea>
+                
+                <div class="mt-2 text-right text-xs text-gray-500">
+                    <span id="char-count">0</span> characters
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        // List of extensions usually considered text. 
+        // We filter against this (or standard text checks) to avoid reading binaries as text.
+        const TEXT_EXTENSIONS = new Set([
+            'txt', 'md', 'markdown', 'json', 'csv', 'xml', 'html', 'htm', 'css', 'scss', 'sass', 'less',
+            'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'php', 'py', 'rb', 'java', 'c', 'cpp', 'h', 'hpp', 
+            'cs', 'go', 'rs', 'swift', 'kt', 'kts', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'toml', 'ini', 
+            'cfg', 'conf', 'properties', 'sql', 'graphql', 'bat', 'ps1', 'dockerfile', 'gitignore', 'env'
+        ]);
+
+        const BINARY_EXTENSIONS = new Set([
+            'png', 'jpg', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'svg', 'tiff', 
+            'mp3', 'wav', 'mp4', 'mov', 'avi', 'mkv', 
+            'zip', 'rar', '7z', 'tar', 'gz', 
+            'exe', 'dll', 'so', 'dylib', 'bin', 'iso', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'
+        ]);
+
+        // --- DOM Elements ---
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const statusContainer = document.getElementById('status-container');
+        const statusText = document.getElementById('status-text');
+        const loader = document.getElementById('loader');
+        const fileCountSpan = document.getElementById('file-count');
+        const outputSection = document.getElementById('output-section');
+        const resultBox = document.getElementById('result-box');
+        const charCount = document.getElementById('char-count');
+        const downloadBtn = document.getElementById('download-btn');
+        const copyBtn = document.getElementById('copy-btn');
+        const addSeparatorsCheckbox = document.getElementById('add-separators');
+
+        // --- Event Listeners ---
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        // Drag and drop visual feedback
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-500', 'bg-gray-750');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-gray-750');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-gray-750');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect({ target: fileInput });
+            }
+        });
+
+        downloadBtn.addEventListener('click', downloadText);
+        copyBtn.addEventListener('click', copyToClipboard);
+
+        // --- Core Logic ---
+
+        function isTextFile(filename) {
+            const parts = filename.split('.');
+            if (parts.length === 1) return true; // No extension (e.g., Makefiles, LICENSE) usually text
+            const ext = parts.pop().toLowerCase();
+            
+            // Explicitly skip known binaries
+            if (BINARY_EXTENSIONS.has(ext)) return false;
+
+            // If it's in our allow list, it's definitely text
+            if (TEXT_EXTENSIONS.has(ext)) return true;
+
+            // Heuristic fallback: Assume it is text if not binary, 
+            // but in a real app we might peek at bytes. 
+            // For this simple tool, we rely on the binary exclusion list.
+            return true; 
+        }
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Reset UI
+            resultBox.value = '';
+            outputSection.classList.add('hidden');
+            statusContainer.classList.remove('hidden');
+            loader.style.display = 'block';
+            statusText.textContent = 'Reading zip file...';
+            statusText.classList.remove('text-red-400');
+            statusText.classList.add('text-gray-200');
+            fileCountSpan.textContent = '';
+
+            try {
+                const zip = new JSZip();
+                const zipContent = await zip.loadAsync(file);
+                
+                // Get all file paths and sort them alphabetically
+                const filePaths = Object.keys(zipContent.files).sort();
+                
+                let combinedText = "";
+                let processedCount = 0;
+                let ignoredCount = 0;
+
+                statusText.textContent = `Processing ${filePaths.length} items...`;
+
+                for (const path of filePaths) {
+                    const zipEntry = zipContent.files[path];
+
+                    // Skip directories
+                    if (zipEntry.dir) continue;
+
+                    // Skip binary files / unwanted extensions
+                    if (!isTextFile(path)) {
+                        ignoredCount++;
+                        continue;
+                    }
+
+                    // Read content
+                    const content = await zipEntry.async("string");
+
+                    // Format Output
+                    if (addSeparatorsCheckbox.checked) {
+                        combinedText += `\n================================================================================\n`;
+                        combinedText += `FILE PATH: ${path}\n`;
+                        combinedText += `================================================================================\n\n`;
+                    } else {
+                        combinedText += `\n--- ${path} ---\n`;
+                    }
+
+                    combinedText += content + "\n\n";
+                    processedCount++;
+                }
+
+                // Update UI with results
+                resultBox.value = combinedText;
+                charCount.textContent = new Intl.NumberFormat().format(combinedText.length);
+                fileCountSpan.textContent = `${processedCount} files merged (${ignoredCount} ignored)`;
+                
+                statusText.textContent = "Conversion Complete!";
+                loader.style.display = 'none';
+                outputSection.classList.remove('hidden');
+
+            } catch (error) {
+                console.error(error);
+                statusText.textContent = "Error: " + error.message;
+                statusText.classList.add('text-red-400');
+                loader.style.display = 'none';
+            }
+        }
+
+        function downloadText() {
+            const text = resultBox.value;
+            if (!text) return;
+
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'merged_files.txt'; // Default filename
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        function copyToClipboard() {
+            resultBox.select();
+            document.execCommand('copy'); // Fallback for older browsers/iframe context
+            
+            // Visual feedback
+            const originalText = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Copied!';
+            copyBtn.classList.remove('bg-gray-700');
+            copyBtn.classList.add('bg-green-600');
+            
+            setTimeout(() => {
+                copyBtn.innerHTML = originalText;
+                copyBtn.classList.add('bg-gray-700');
+                copyBtn.classList.remove('bg-green-600');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
