@@ -3,296 +3,970 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zip to Single Text File Converter</title>
+    <title>Web NFC Hub | Read, Save & Replicate NDEF Tags</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* Custom scrollbar for the preview area */
-        .custom-scrollbar::-webkit-scrollbar {
+        .console-scroll::-webkit-scrollbar,
+        .saved-scroll::-webkit-scrollbar {
             width: 8px;
-            height: 8px;
         }
-        .custom-scrollbar::-webkit-scrollbar-track {
+        .console-scroll::-webkit-scrollbar-track,
+        .saved-scroll::-webkit-scrollbar-track {
             background: #1f2937;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
+        .console-scroll::-webkit-scrollbar-thumb,
+        .saved-scroll::-webkit-scrollbar-thumb {
             background: #4b5563;
             border-radius: 4px;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        .console-scroll::-webkit-scrollbar-thumb:hover,
+        .saved-scroll::-webkit-scrollbar-thumb:hover {
             background: #6b7280;
         }
-        .loader {
-            border: 3px solid #f3f3f3;
-            border-radius: 50%;
-            border-top: 3px solid #3b82f6;
-            width: 24px;
-            height: 24px;
-            -webkit-animation: spin 1s linear infinite; /* Safari */
-            animation: spin 1s linear infinite;
+
+        .pulse-animation {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .7; transform: scale(1.05); }
+        }
+
+        .record-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border-radius: 9999px;
+            padding: 0.15rem 0.55rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            background: #dbeafe;
+            color: #1e40af;
         }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800">
 
-    <div class="container mx-auto px-4 py-8 max-w-4xl">
-        <!-- Header -->
-        <header class="text-center mb-10">
-            <h1 class="text-3xl md:text-4xl font-bold text-blue-400 mb-2">
-                <i class="fa-solid fa-file-zipper mr-2"></i> Zip to Text Converter
+    <header class="bg-blue-600 text-white shadow-md">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row gap-3 sm:gap-0 justify-between sm:items-center">
+            <h1 class="text-2xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-wifi rotate-90"></i> Web NFC Hub
             </h1>
-            <p class="text-gray-400">Upload a .zip file to merge all contained code/text files into a single document.</p>
-        </header>
-
-        <!-- Main Card -->
-        <div class="bg-gray-800 rounded-xl shadow-2xl overflow-hidden border border-gray-700">
-            
-            <!-- Upload Zone -->
-            <div class="p-8">
-                <div id="drop-zone" class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center hover:border-blue-500 hover:bg-gray-750 transition-all cursor-pointer relative group">
-                    <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".zip">
-                    
-                    <div class="pointer-events-none">
-                        <i class="fa-solid fa-cloud-arrow-up text-5xl text-gray-500 mb-4 group-hover:text-blue-400 transition-colors"></i>
-                        <p class="text-lg font-semibold text-gray-300">Drag & drop a .zip file here</p>
-                        <p class="text-sm text-gray-500 mt-2">or click to browse</p>
-                    </div>
-                </div>
-
-                <!-- Status Bar -->
-                <div id="status-container" class="hidden mt-6 bg-gray-700 rounded-lg p-4 flex items-center justify-between">
-                    <div class="flex items-center space-x-3">
-                        <div id="loader" class="loader"></div>
-                        <span id="status-text" class="text-sm font-medium text-gray-200">Processing...</span>
-                    </div>
-                    <span id="file-count" class="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">0 files</span>
-                </div>
-            </div>
-
-            <!-- Configuration (Collapsible) -->
-            <div class="px-8 pb-4">
-                <details class="text-gray-400 text-sm cursor-pointer">
-                    <summary class="hover:text-blue-400 focus:outline-none">Advanced Options</summary>
-                    <div class="mt-3 p-4 bg-gray-900 rounded border border-gray-700">
-                        <label class="flex items-center space-x-2">
-                            <input type="checkbox" id="add-separators" checked class="form-checkbox text-blue-500 rounded bg-gray-700 border-gray-600">
-                            <span>Add strict separator lines between files</span>
-                        </label>
-                        <div class="mt-2 text-xs text-gray-500">
-                            By default, the tool ignores binary files (images, exe, etc.) and only includes text-based extensions.
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- Output Area -->
-            <div id="output-section" class="hidden border-t border-gray-700 bg-gray-900/50 p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-semibold text-gray-200">Preview</h2>
-                    <div class="flex space-x-2">
-                        <button id="copy-btn" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors flex items-center">
-                            <i class="fa-regular fa-copy mr-2"></i> Copy
-                        </button>
-                        <button id="download-btn" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors flex items-center shadow-lg shadow-blue-900/50">
-                            <i class="fa-solid fa-download mr-2"></i> Download .txt
-                        </button>
-                    </div>
-                </div>
-                
-                <textarea id="result-box" class="w-full h-96 bg-gray-950 text-gray-300 font-mono text-sm p-4 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500 custom-scrollbar resize-none" readonly placeholder="Converted text will appear here..."></textarea>
-                
-                <div class="mt-2 text-right text-xs text-gray-500">
-                    <span id="char-count">0</span> characters
-                </div>
+            <div id="statusBadge" class="w-fit px-3 py-1 rounded-full text-sm font-semibold bg-gray-500 text-white">
+                Checking Support...
             </div>
         </div>
-    </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <section class="lg:col-span-1 space-y-6">
+            <div id="unsupportedWarning" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm">
+                <p class="font-bold"><i class="fa-solid fa-triangle-exclamation"></i> Device Not Supported</p>
+                <p class="text-sm mt-1">
+                    Your current device or browser does not support the Web NFC API. Web NFC normally requires Chrome on Android, a secure HTTPS page, and an unlocked visible page.
+                </p>
+            </div>
+
+            <div class="bg-amber-50 border-l-4 border-amber-400 text-amber-900 p-4 rounded shadow-sm">
+                <p class="font-bold"><i class="fa-solid fa-shield-halved"></i> NDEF-only replication</p>
+                <p class="text-sm mt-1">
+                    This app can save and write back NDEF payloads such as text, URLs, JSON, vCards, MIME records, and other readable NDEF bytes. It cannot copy a tag serial number, emulate your phone as a tag, or clone secure cards, access badges, transit cards, or payment cards.
+                </p>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Scan & Capture</h2>
+
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Read NFC Tag</h3>
+                    <p class="text-sm text-gray-500 mb-3">Reads all NDEF records available to the browser and keeps the latest scan ready to save or replicate.</p>
+                    <button id="btnRead" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-book-open"></i> Start Scanning
+                    </button>
+                </div>
+
+                <div id="lastScanPanel" class="hidden pt-4 border-t">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Latest Scan</h3>
+                    <div id="lastScanSummary" class="text-sm bg-gray-50 border rounded p-3 mb-3 text-gray-700"></div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Save Name</label>
+                    <input id="saveName" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border mb-3" placeholder="Example: Front door URL tag">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button id="btnSaveScan" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded transition flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Scan
+                        </button>
+                        <button id="btnWriteLast" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-3 rounded transition flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-clone"></i> Replicate Scan
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <button id="btnStop" class="hidden w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-stop"></i> Stop Current Operation
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Create New NDEF Value</h2>
+                <p class="text-sm text-gray-500 mb-3">Manually create a value and write it to a writable NDEF tag.</p>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Record Type</label>
+                        <select id="writeType" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border">
+                            <option value="text">Text Record</option>
+                            <option value="url">URL / Web Link</option>
+                            <option value="absolute-url">Absolute URL Record</option>
+                            <option value="json">JSON MIME Record</option>
+                            <option value="vcard">Contact / vCard MIME Record</option>
+                            <option value="mime">Custom MIME Record</option>
+                        </select>
+                    </div>
+
+                    <div id="mimeTypeWrap" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">MIME Type</label>
+                        <input id="mimeType" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border" value="text/plain" placeholder="application/json, text/vcard, text/plain">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Payload Data</label>
+                        <textarea id="writeData" rows="5" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border" placeholder="Enter text, URL, JSON, vCard, or MIME payload"></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button id="btnWrite" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded transition flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-pen-to-square"></i> Write New Value
+                        </button>
+                        <button id="btnSaveManual" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded transition flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-bookmark"></i> Save New Value
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="lg:col-span-1 space-y-6">
+            <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200 h-full min-h-[600px] flex flex-col">
+                <div class="flex justify-between items-start gap-3 mb-4 border-b pb-2">
+                    <div>
+                        <h2 class="text-xl font-bold">Saved NFC Values</h2>
+                        <p class="text-sm text-gray-500">Stored locally in IndexedDB with a localStorage fallback.</p>
+                    </div>
+                    <button id="btnRefreshSaved" class="text-blue-600 hover:text-blue-800 text-sm font-bold"><i class="fa-solid fa-rotate"></i></button>
+                </div>
+
+                <input id="savedSearch" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border mb-3" placeholder="Search saved names or types">
+
+                <div id="savedList" class="saved-scroll overflow-y-auto pr-1 space-y-3 flex-1">
+                    <div class="text-gray-500 text-sm">Loading saved values...</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="lg:col-span-1">
+            <div class="bg-gray-900 rounded-lg shadow-md border border-gray-700 flex flex-col h-[700px]">
+                <div class="bg-gray-800 px-4 py-2 border-b border-gray-700 rounded-t-lg flex justify-between items-center">
+                    <span class="text-gray-300 font-mono text-sm"><i class="fa-solid fa-terminal"></i> Terminal Output</span>
+                    <button id="btnClear" class="text-gray-400 hover:text-white text-sm"><i class="fa-solid fa-trash"></i> Clear</button>
+                </div>
+
+                <div id="activeState" class="hidden bg-blue-900 text-blue-200 p-3 text-center text-sm font-semibold border-b border-blue-800">
+                    <i class="fa-solid fa-mobile-screen pulse-animation"></i> <span id="activeStateText">Waiting for tag tap...</span>
+                </div>
+
+                <div id="consoleOutput" class="p-4 flex-1 overflow-y-auto console-scroll font-mono text-sm text-green-400 space-y-2">
+                    <div class="text-gray-500">System initialized. Awaiting commands...</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
 
     <script>
-        // --- Configuration ---
-        // List of extensions usually considered text. 
-        // We filter against this (or standard text checks) to avoid reading binaries as text.
-        const TEXT_EXTENSIONS = new Set([
-            'txt', 'md', 'markdown', 'json', 'csv', 'xml', 'html', 'htm', 'css', 'scss', 'sass', 'less',
-            'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'php', 'py', 'rb', 'java', 'c', 'cpp', 'h', 'hpp', 
-            'cs', 'go', 'rs', 'swift', 'kt', 'kts', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'toml', 'ini', 
-            'cfg', 'conf', 'properties', 'sql', 'graphql', 'bat', 'ps1', 'dockerfile', 'gitignore', 'env'
-        ]);
+        // DOM Elements
+        const statusBadge = document.getElementById('statusBadge');
+        const unsupportedWarning = document.getElementById('unsupportedWarning');
+        const btnRead = document.getElementById('btnRead');
+        const btnWrite = document.getElementById('btnWrite');
+        const btnWriteLast = document.getElementById('btnWriteLast');
+        const btnSaveScan = document.getElementById('btnSaveScan');
+        const btnSaveManual = document.getElementById('btnSaveManual');
+        const btnStop = document.getElementById('btnStop');
+        const btnRefreshSaved = document.getElementById('btnRefreshSaved');
+        const writeType = document.getElementById('writeType');
+        const writeData = document.getElementById('writeData');
+        const mimeType = document.getElementById('mimeType');
+        const mimeTypeWrap = document.getElementById('mimeTypeWrap');
+        const consoleOutput = document.getElementById('consoleOutput');
+        const btnClear = document.getElementById('btnClear');
+        const activeState = document.getElementById('activeState');
+        const activeStateText = document.getElementById('activeStateText');
+        const lastScanPanel = document.getElementById('lastScanPanel');
+        const lastScanSummary = document.getElementById('lastScanSummary');
+        const saveName = document.getElementById('saveName');
+        const savedList = document.getElementById('savedList');
+        const savedSearch = document.getElementById('savedSearch');
 
-        const BINARY_EXTENSIONS = new Set([
-            'png', 'jpg', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'svg', 'tiff', 
-            'mp3', 'wav', 'mp4', 'mov', 'avi', 'mkv', 
-            'zip', 'rar', '7z', 'tar', 'gz', 
-            'exe', 'dll', 'so', 'dylib', 'bin', 'iso', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'
-        ]);
+        const DB_NAME = 'web-nfc-hub-db';
+        const DB_VERSION = 1;
+        const DB_STORE = 'saved-ndef-values';
+        const LS_KEY = 'web-nfc-hub-saved-values';
 
-        // --- DOM Elements ---
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const statusContainer = document.getElementById('status-container');
-        const statusText = document.getElementById('status-text');
-        const loader = document.getElementById('loader');
-        const fileCountSpan = document.getElementById('file-count');
-        const outputSection = document.getElementById('output-section');
-        const resultBox = document.getElementById('result-box');
-        const charCount = document.getElementById('char-count');
-        const downloadBtn = document.getElementById('download-btn');
-        const copyBtn = document.getElementById('copy-btn');
-        const addSeparatorsCheckbox = document.getElementById('add-separators');
+        let isNfcSupported = false;
+        let abortController = null;
+        let dbHandlePromise = null;
+        let latestScan = null;
+        let savedCache = [];
 
-        // --- Event Listeners ---
-        fileInput.addEventListener('change', handleFileSelect);
-        
-        // Drag and drop visual feedback
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('border-blue-500', 'bg-gray-750');
-        });
-
-        dropZone.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('border-blue-500', 'bg-gray-750');
-        });
-
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('border-blue-500', 'bg-gray-750');
-            if (e.dataTransfer.files.length) {
-                fileInput.files = e.dataTransfer.files;
-                handleFileSelect({ target: fileInput });
-            }
-        });
-
-        downloadBtn.addEventListener('click', downloadText);
-        copyBtn.addEventListener('click', copyToClipboard);
-
-        // --- Core Logic ---
-
-        function isTextFile(filename) {
-            const parts = filename.split('.');
-            if (parts.length === 1) return true; // No extension (e.g., Makefiles, LICENSE) usually text
-            const ext = parts.pop().toLowerCase();
-            
-            // Explicitly skip known binaries
-            if (BINARY_EXTENSIONS.has(ext)) return false;
-
-            // If it's in our allow list, it's definitely text
-            if (TEXT_EXTENSIONS.has(ext)) return true;
-
-            // Heuristic fallback: Assume it is text if not binary, 
-            // but in a real app we might peek at bytes. 
-            // For this simple tool, we rely on the binary exclusion list.
-            return true; 
+        // ---------- Safe HTML / Encoding Helpers ----------
+        function escapeHTML(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
-        async function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        function safeUrl(value) {
+            try {
+                const url = new URL(value);
+                if (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:' || url.protocol === 'tel:') {
+                    return url.href;
+                }
+            } catch (error) {
+                return '';
+            }
+            return '';
+        }
 
-            // Reset UI
-            resultBox.value = '';
-            outputSection.classList.add('hidden');
-            statusContainer.classList.remove('hidden');
-            loader.style.display = 'block';
-            statusText.textContent = 'Reading zip file...';
-            statusText.classList.remove('text-red-400');
-            statusText.classList.add('text-gray-200');
-            fileCountSpan.textContent = '';
+        function makeId() {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+            return `nfc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        }
+
+        function bytesToBase64(bytes) {
+            if (!bytes || bytes.length === 0) return '';
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        function base64ToBytes(base64) {
+            if (!base64) return new Uint8Array();
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+        }
+
+        function bytesToHex(bytes, limit = 96) {
+            if (!bytes || bytes.length === 0) return '';
+            const clipped = Array.from(bytes.slice(0, limit)).map(byte => byte.toString(16).padStart(2, '0')).join(' ');
+            return bytes.length > limit ? `${clipped} ...` : clipped;
+        }
+
+        function getRecordBytes(record) {
+            const data = record && record.data;
+            if (!data) return new Uint8Array();
+            if (data instanceof DataView) {
+                return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+            }
+            if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0));
+            if (ArrayBuffer.isView(data)) {
+                return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+            }
+            if (typeof data === 'string') return new TextEncoder().encode(data);
+            return new Uint8Array();
+        }
+
+        function looksPrintable(text) {
+            if (!text) return false;
+            const cleaned = text.replace(/[\r\n\t]/g, '');
+            if (!cleaned) return true;
+            const printable = cleaned.split('').filter(char => {
+                const code = char.charCodeAt(0);
+                return code >= 32 && code !== 127;
+            }).length;
+            return printable / cleaned.length > 0.9;
+        }
+
+        function decodeBytes(bytes, encoding = 'utf-8') {
+            try {
+                return new TextDecoder(encoding || 'utf-8').decode(bytes);
+            } catch (error) {
+                return new TextDecoder().decode(bytes);
+            }
+        }
+
+        function isTextLikeMime(mediaType = '') {
+            const type = mediaType.toLowerCase();
+            return type.startsWith('text/') || type.includes('json') || type.includes('xml') || type.includes('javascript') || type.includes('csv') || type.includes('vcard');
+        }
+
+        function summarizeRecords(records = []) {
+            if (records.length === 0) return 'Empty NDEF value';
+            return records.map((record, index) => `#${index + 1} ${record.recordType}${record.mediaType ? `/${record.mediaType}` : ''}`).join(', ');
+        }
+
+        // ---------- IndexedDB / Browser Storage ----------
+        function openDb() {
+            if (!('indexedDB' in window)) return Promise.resolve(null);
+            if (dbHandlePromise) return dbHandlePromise;
+
+            dbHandlePromise = new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains(DB_STORE)) {
+                        const store = db.createObjectStore(DB_STORE, { keyPath: 'id' });
+                        store.createIndex('createdAt', 'createdAt', { unique: false });
+                        store.createIndex('name', 'name', { unique: false });
+                    }
+                };
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            }).catch(error => {
+                console.warn('IndexedDB unavailable, falling back to localStorage.', error);
+                return null;
+            });
+
+            return dbHandlePromise;
+        }
+
+        async function saveStoredValue(item) {
+            const now = new Date().toISOString();
+            const value = {
+                ...item,
+                id: item.id || makeId(),
+                createdAt: item.createdAt || now,
+                updatedAt: now,
+                appVersion: 2
+            };
+
+            const db = await openDb();
+            if (!db) {
+                const existing = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+                const without = existing.filter(entry => entry.id !== value.id);
+                without.push(value);
+                localStorage.setItem(LS_KEY, JSON.stringify(without));
+                return value;
+            }
+
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(DB_STORE, 'readwrite');
+                tx.objectStore(DB_STORE).put(value);
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+            });
+
+            return value;
+        }
+
+        async function getStoredValues() {
+            const db = await openDb();
+            if (!db) {
+                return JSON.parse(localStorage.getItem(LS_KEY) || '[]').sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+            }
+
+            const values = await new Promise((resolve, reject) => {
+                const tx = db.transaction(DB_STORE, 'readonly');
+                const request = tx.objectStore(DB_STORE).getAll();
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => reject(request.error);
+            });
+
+            return values.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        }
+
+        async function deleteStoredValue(id) {
+            const db = await openDb();
+            if (!db) {
+                const existing = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+                localStorage.setItem(LS_KEY, JSON.stringify(existing.filter(entry => entry.id !== id)));
+                return;
+            }
+
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(DB_STORE, 'readwrite');
+                tx.objectStore(DB_STORE).delete(id);
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        // ---------- Logging ----------
+        function log(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+
+            let colorClass = 'text-green-400';
+            if (type === 'error') colorClass = 'text-red-400';
+            if (type === 'success') colorClass = 'text-blue-300';
+            if (type === 'warning') colorClass = 'text-yellow-400';
+            if (type === 'data') colorClass = 'text-purple-300 bg-gray-800 p-2 rounded mt-1 mb-2';
+
+            entry.className = colorClass;
+
+            if (type === 'data') {
+                entry.innerHTML = message;
+            } else {
+                entry.textContent = `[${time}] ${message}`;
+            }
+
+            consoleOutput.appendChild(entry);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        // ---------- NFC Reading / Decoding ----------
+        async function normalizeNdefRecord(record, depth = 0) {
+            const bytes = getRecordBytes(record);
+            const encoding = record.encoding || 'utf-8';
+            const baseRecord = {
+                id: record.id || '',
+                recordType: record.recordType || 'unknown',
+                mediaType: record.mediaType || '',
+                encoding,
+                lang: record.lang || '',
+                byteLength: bytes.length,
+                base64: bytesToBase64(bytes),
+                hexPreview: bytesToHex(bytes),
+                text: '',
+                json: null,
+                nestedRecords: [],
+                preview: ''
+            };
 
             try {
-                const zip = new JSZip();
-                const zipContent = await zip.loadAsync(file);
-                
-                // Get all file paths and sort them alphabetically
-                const filePaths = Object.keys(zipContent.files).sort();
-                
-                let combinedText = "";
-                let processedCount = 0;
-                let ignoredCount = 0;
-
-                statusText.textContent = `Processing ${filePaths.length} items...`;
-
-                for (const path of filePaths) {
-                    const zipEntry = zipContent.files[path];
-
-                    // Skip directories
-                    if (zipEntry.dir) continue;
-
-                    // Skip binary files / unwanted extensions
-                    if (!isTextFile(path)) {
-                        ignoredCount++;
-                        continue;
-                    }
-
-                    // Read content
-                    const content = await zipEntry.async("string");
-
-                    // Format Output
-                    if (addSeparatorsCheckbox.checked) {
-                        combinedText += `\n================================================================================\n`;
-                        combinedText += `FILE PATH: ${path}\n`;
-                        combinedText += `================================================================================\n\n`;
-                    } else {
-                        combinedText += `\n--- ${path} ---\n`;
-                    }
-
-                    combinedText += content + "\n\n";
-                    processedCount++;
+                if (baseRecord.recordType === 'empty') {
+                    baseRecord.preview = 'Empty record';
+                    return baseRecord;
                 }
 
-                // Update UI with results
-                resultBox.value = combinedText;
-                charCount.textContent = new Intl.NumberFormat().format(combinedText.length);
-                fileCountSpan.textContent = `${processedCount} files merged (${ignoredCount} ignored)`;
-                
-                statusText.textContent = "Conversion Complete!";
-                loader.style.display = 'none';
-                outputSection.classList.remove('hidden');
+                if (baseRecord.recordType === 'text') {
+                    baseRecord.text = decodeBytes(bytes, encoding);
+                    baseRecord.preview = baseRecord.text;
+                    return baseRecord;
+                }
 
+                if (baseRecord.recordType === 'url' || baseRecord.recordType === 'absolute-url') {
+                    baseRecord.text = decodeBytes(bytes);
+                    baseRecord.preview = baseRecord.text;
+                    return baseRecord;
+                }
+
+                if (baseRecord.recordType === 'mime') {
+                    const decoded = decodeBytes(bytes);
+                    if (isTextLikeMime(baseRecord.mediaType) || looksPrintable(decoded)) {
+                        baseRecord.text = decoded;
+                        baseRecord.preview = decoded;
+                        if (baseRecord.mediaType.toLowerCase().includes('json')) {
+                            try { baseRecord.json = JSON.parse(decoded); } catch (error) { /* Keep raw text. */ }
+                        }
+                    } else {
+                        baseRecord.preview = `${bytes.length} bytes of binary MIME data`;
+                    }
+                    return baseRecord;
+                }
+
+                if (baseRecord.recordType === 'smart-poster' && depth < 3 && typeof record.toRecords === 'function') {
+                    try {
+                        const nested = record.toRecords();
+                        baseRecord.nestedRecords = await Promise.all(Array.from(nested).map(item => normalizeNdefRecord(item, depth + 1)));
+                        baseRecord.preview = `Smart poster with ${baseRecord.nestedRecords.length} nested record(s)`;
+                        return baseRecord;
+                    } catch (error) {
+                        baseRecord.preview = `Smart poster payload (${bytes.length} bytes)`;
+                        return baseRecord;
+                    }
+                }
+
+                const decoded = decodeBytes(bytes);
+                if (looksPrintable(decoded)) {
+                    baseRecord.text = decoded;
+                    baseRecord.preview = decoded;
+                } else {
+                    baseRecord.preview = `${bytes.length} raw byte(s)`;
+                }
             } catch (error) {
-                console.error(error);
-                statusText.textContent = "Error: " + error.message;
-                statusText.classList.add('text-red-400');
-                loader.style.display = 'none';
+                baseRecord.preview = `Could not decode: ${error.message}`;
+            }
+
+            return baseRecord;
+        }
+
+        async function decodeNdefMessage(message, serialNumber = '') {
+            const records = await Promise.all(Array.from(message.records || []).map(record => normalizeNdefRecord(record)));
+
+            latestScan = {
+                id: makeId(),
+                name: '',
+                source: 'scan',
+                serialNumber: serialNumber || '',
+                scannedAt: new Date().toISOString(),
+                records
+            };
+
+            if (records.length === 0) {
+                log('Tag is empty (0 records found).', 'warning');
+            } else {
+                log(`Found ${records.length} NDEF record(s). Latest scan is ready to save or replicate.`, 'success');
+                log(renderRecordsHtml(records, serialNumber), 'data');
+            }
+
+            updateLastScanPanel();
+        }
+
+        function renderRecordsHtml(records = [], serialNumber = '') {
+            let html = '<div class="space-y-2">';
+            if (serialNumber) {
+                html += `<div class="text-xs text-gray-400">Serial number: ${escapeHTML(serialNumber)} <span class="text-yellow-400">(display-only; cannot be replicated by Web NFC)</span></div>`;
+            }
+
+            records.forEach((record, index) => {
+                html += `<div class="border border-gray-600 p-2 rounded">`;
+                html += `<div class="font-bold text-gray-300 border-b border-gray-600 mb-1">#${index + 1} Type: ${escapeHTML(record.recordType)}</div>`;
+                if (record.id) html += `<div><strong>ID:</strong> ${escapeHTML(record.id)}</div>`;
+                if (record.mediaType) html += `<div><strong>MIME:</strong> ${escapeHTML(record.mediaType)}</div>`;
+                if (record.lang) html += `<div><strong>Lang:</strong> ${escapeHTML(record.lang)}</div>`;
+
+                if (record.json) {
+                    html += `<pre class="text-xs overflow-x-auto whitespace-pre-wrap">${escapeHTML(JSON.stringify(record.json, null, 2))}</pre>`;
+                } else if (record.text) {
+                    const maybeUrl = safeUrl(record.text);
+                    if ((record.recordType === 'url' || record.recordType === 'absolute-url') && maybeUrl) {
+                        html += `<div><strong>URL:</strong> <a href="${escapeHTML(maybeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">${escapeHTML(record.text)}</a></div>`;
+                    } else {
+                        html += `<pre class="text-xs overflow-x-auto whitespace-pre-wrap">${escapeHTML(record.text)}</pre>`;
+                    }
+                } else {
+                    html += `<div><strong>Bytes:</strong> ${escapeHTML(String(record.byteLength))}</div>`;
+                    if (record.hexPreview) html += `<pre class="text-xs overflow-x-auto whitespace-pre-wrap text-gray-400">${escapeHTML(record.hexPreview)}</pre>`;
+                }
+
+                if (record.nestedRecords && record.nestedRecords.length) {
+                    html += `<div class="mt-2 pl-2 border-l border-gray-600"><div class="text-xs text-gray-400 mb-1">Nested records:</div>${renderRecordsHtml(record.nestedRecords)}</div>`;
+                }
+
+                html += '</div>';
+            });
+
+            html += '</div>';
+            return html;
+        }
+
+        async function startReading() {
+            if (!isNfcSupported) return;
+
+            try {
+                log('Requesting NFC permissions and starting scan...');
+                abortController = new AbortController();
+                const ndef = new NDEFReader();
+
+                await ndef.scan({ signal: abortController.signal });
+
+                log('Scan started successfully. Tap an NDEF NFC tag to the back of your device.', 'success');
+                setScanningState(true, 'Scanning... Tap an NFC tag.');
+
+                ndef.onreadingerror = () => {
+                    log('Error reading tag. The tag may be unformatted, encrypted, non-NDEF, or outside the browser NFC scope.', 'error');
+                };
+
+                ndef.onreading = async ({ message, serialNumber }) => {
+                    log(`Tag detected. Serial Number: ${serialNumber || 'N/A'}`, 'success');
+                    await decodeNdefMessage(message, serialNumber || '');
+                };
+            } catch (error) {
+                log(`Scan failed: ${error.message}`, 'error');
+                setScanningState(false);
             }
         }
 
-        function downloadText() {
-            const text = resultBox.value;
-            if (!text) return;
+        // ---------- NFC Writing / Replication ----------
+        function normalizedRecordToNdefInit(record) {
+            const type = record.recordType || 'unknown';
+            const dataBytes = base64ToBytes(record.base64);
+            const common = {};
+            if (record.id) common.id = record.id;
 
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'merged_files.txt'; // Default filename
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            if (type === 'empty') return { recordType: 'empty' };
+
+            if (type === 'text') {
+                return {
+                    recordType: 'text',
+                    data: record.text || decodeBytes(dataBytes, record.encoding || 'utf-8'),
+                    lang: record.lang || 'en',
+                    encoding: record.encoding || 'utf-8',
+                    ...common
+                };
+            }
+
+            if (type === 'url' || type === 'absolute-url') {
+                return {
+                    recordType: type,
+                    data: record.text || decodeBytes(dataBytes),
+                    ...common
+                };
+            }
+
+            if (type === 'mime') {
+                return {
+                    recordType: 'mime',
+                    mediaType: record.mediaType || 'application/octet-stream',
+                    data: dataBytes,
+                    ...common
+                };
+            }
+
+            if (type === 'smart-poster' && record.nestedRecords && record.nestedRecords.length) {
+                return {
+                    recordType: 'smart-poster',
+                    data: { records: record.nestedRecords.map(normalizedRecordToNdefInit) },
+                    ...common
+                };
+            }
+
+            return {
+                recordType: type,
+                mediaType: record.mediaType || undefined,
+                data: dataBytes,
+                ...common
+            };
         }
 
-        function copyToClipboard() {
-            resultBox.select();
-            document.execCommand('copy'); // Fallback for older browsers/iframe context
-            
-            // Visual feedback
-            const originalText = copyBtn.innerHTML;
-            copyBtn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Copied!';
-            copyBtn.classList.remove('bg-gray-700');
-            copyBtn.classList.add('bg-green-600');
-            
-            setTimeout(() => {
-                copyBtn.innerHTML = originalText;
-                copyBtn.classList.add('bg-gray-700');
-                copyBtn.classList.remove('bg-green-600');
-            }, 2000);
+        function makeMessageFromValue(value) {
+            const records = (value.records || []).map(normalizedRecordToNdefInit);
+            return { records };
         }
+
+        function makeManualValue() {
+            const type = writeType.value;
+            const rawData = writeData.value.trim();
+
+            if (!rawData) throw new Error('Please enter payload data first.');
+
+            let records;
+            if (type === 'text') {
+                records = [{ recordType: 'text', data: rawData }];
+            } else if (type === 'url' || type === 'absolute-url') {
+                let urlValue = rawData;
+                if (!/^https?:\/\//i.test(urlValue) && !/^mailto:/i.test(urlValue) && !/^tel:/i.test(urlValue)) {
+                    urlValue = `https://${urlValue}`;
+                }
+                records = [{ recordType: type, data: urlValue }];
+            } else if (type === 'json') {
+                let jsonData = rawData;
+                try {
+                    jsonData = JSON.stringify(JSON.parse(rawData));
+                } catch (error) {
+                    log('JSON was not valid JSON; saving/writing it as raw application/json text.', 'warning');
+                }
+                records = [{ recordType: 'mime', mediaType: 'application/json', data: jsonData }];
+            } else if (type === 'vcard') {
+                records = [{ recordType: 'mime', mediaType: 'text/vcard', data: rawData }];
+            } else if (type === 'mime') {
+                const mediaTypeValue = mimeType.value.trim() || 'text/plain';
+                records = [{ recordType: 'mime', mediaType: mediaTypeValue, data: rawData }];
+            } else {
+                throw new Error(`Unsupported manual record type: ${type}`);
+            }
+
+            const normalizedRecords = records.map(record => {
+                const bytes = typeof record.data === 'string' ? new TextEncoder().encode(record.data) : new Uint8Array(record.data || []);
+                return {
+                    id: '',
+                    recordType: record.recordType,
+                    mediaType: record.mediaType || '',
+                    encoding: 'utf-8',
+                    lang: record.recordType === 'text' ? 'en' : '',
+                    byteLength: bytes.length,
+                    base64: bytesToBase64(bytes),
+                    hexPreview: bytesToHex(bytes),
+                    text: typeof record.data === 'string' ? record.data : '',
+                    json: record.mediaType === 'application/json' ? tryParseJson(record.data) : null,
+                    nestedRecords: [],
+                    preview: typeof record.data === 'string' ? record.data : `${bytes.length} byte(s)`
+                };
+            });
+
+            return {
+                id: makeId(),
+                name: '',
+                source: 'manual',
+                serialNumber: '',
+                scannedAt: '',
+                records: normalizedRecords
+            };
+        }
+
+        function tryParseJson(value) {
+            try { return JSON.parse(value); } catch (error) { return null; }
+        }
+
+        async function writeNdefValue(value, label = 'value') {
+            if (!isNfcSupported) return;
+            if (!value || !value.records || value.records.length === 0) {
+                log('No NDEF records are available to write.', 'error');
+                return;
+            }
+
+            try {
+                abortController = new AbortController();
+                const ndef = new NDEFReader();
+                const message = makeMessageFromValue(value);
+
+                setScanningState(true, `Ready to write ${label}. Tap a writable NDEF tag.`);
+                log(`Writing ${value.records.length} record(s) from ${label}. Hold device steady over a writable tag...`);
+
+                await ndef.write(message, { signal: abortController.signal });
+
+                log(`Success! ${label} was written to the NFC tag.`, 'success');
+                setScanningState(false);
+            } catch (error) {
+                let errorMsg = error.message;
+                if (error.name === 'NotAllowedError') {
+                    errorMsg = 'Permission denied, NFC disabled, or the tag is read-only.';
+                } else if (error.name === 'NotSupportedError') {
+                    errorMsg = 'Tag format not supported, record type unsupported by this browser, or tag capacity exceeded.';
+                } else if (error.name === 'AbortError') {
+                    errorMsg = 'Write operation was aborted.';
+                }
+                log(`Write failed: ${errorMsg}`, 'error');
+                setScanningState(false);
+            }
+        }
+
+        async function startWritingManual() {
+            try {
+                const value = makeManualValue();
+                await writeNdefValue(value, 'manual value');
+            } catch (error) {
+                log(error.message, 'error');
+            }
+        }
+
+        // ---------- UI State / Saved Values ----------
+        function setScanningState(isActive, message = 'Waiting for tag tap...') {
+            const nfcButtons = [btnRead, btnWrite, btnWriteLast];
+            if (isActive) {
+                activeState.classList.remove('hidden');
+                activeStateText.textContent = message;
+                nfcButtons.forEach(button => {
+                    if (button) button.disabled = true;
+                });
+                btnStop.classList.remove('hidden');
+            } else {
+                activeState.classList.add('hidden');
+                nfcButtons.forEach(button => {
+                    if (button) button.disabled = false;
+                });
+                btnStop.classList.add('hidden');
+            }
+        }
+
+        function stopNfcOperation() {
+            if (abortController) {
+                abortController.abort();
+                abortController = null;
+                setScanningState(false);
+                log('Operation aborted by user.', 'warning');
+            }
+        }
+
+        function updateLastScanPanel() {
+            if (!latestScan) {
+                lastScanPanel.classList.add('hidden');
+                return;
+            }
+
+            const scannedTime = latestScan.scannedAt ? new Date(latestScan.scannedAt).toLocaleString() : 'Manual value';
+            lastScanSummary.innerHTML = `
+                <div><strong>Records:</strong> ${escapeHTML(String(latestScan.records.length))}</div>
+                <div><strong>Types:</strong> ${escapeHTML(summarizeRecords(latestScan.records))}</div>
+                ${latestScan.serialNumber ? `<div><strong>Serial:</strong> ${escapeHTML(latestScan.serialNumber)} <span class="text-amber-700">(display-only)</span></div>` : ''}
+                <div><strong>Captured:</strong> ${escapeHTML(scannedTime)}</div>
+            `;
+            saveName.value = latestScan.name || `NFC Scan ${new Date().toLocaleString()}`;
+            lastScanPanel.classList.remove('hidden');
+        }
+
+        async function saveLatestScan() {
+            if (!latestScan) {
+                log('There is no scan to save yet.', 'error');
+                return;
+            }
+
+            const name = saveName.value.trim();
+            if (!name) {
+                log('Please give this scan a name before saving.', 'error');
+                return;
+            }
+
+            const saved = await saveStoredValue({ ...latestScan, id: makeId(), name });
+            latestScan = { ...saved };
+            log(`Saved value: ${name}`, 'success');
+            await refreshSavedValues();
+        }
+
+        async function saveManualValue() {
+            try {
+                const value = makeManualValue();
+                const defaultName = `${writeType.options[writeType.selectedIndex].text} - ${new Date().toLocaleString()}`;
+                const name = prompt('Name this NFC value:', defaultName);
+                if (!name || !name.trim()) {
+                    log('Save canceled; no name was provided.', 'warning');
+                    return;
+                }
+                await saveStoredValue({ ...value, name: name.trim() });
+                log(`Saved manual value: ${name.trim()}`, 'success');
+                await refreshSavedValues();
+            } catch (error) {
+                log(error.message, 'error');
+            }
+        }
+
+        async function refreshSavedValues() {
+            savedCache = await getStoredValues();
+            renderSavedValues();
+        }
+
+        function renderSavedValues() {
+            const query = savedSearch.value.trim().toLowerCase();
+            const filtered = savedCache.filter(item => {
+                const haystack = `${item.name || ''} ${summarizeRecords(item.records || [])}`.toLowerCase();
+                return haystack.includes(query);
+            });
+
+            if (filtered.length === 0) {
+                savedList.innerHTML = `<div class="text-gray-500 text-sm bg-gray-50 border rounded p-3">No saved NFC values${query ? ' match your search' : ' yet'}.</div>`;
+                return;
+            }
+
+            savedList.innerHTML = filtered.map(item => {
+                const date = item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Unknown date';
+                const chips = (item.records || []).slice(0, 4).map(record => `<span class="record-chip">${escapeHTML(record.recordType)}${record.mediaType ? `: ${escapeHTML(record.mediaType)}` : ''}</span>`).join(' ');
+                const more = (item.records || []).length > 4 ? `<span class="text-xs text-gray-500">+${item.records.length - 4} more</span>` : '';
+                return `
+                    <article class="border border-gray-200 rounded-lg p-3 bg-gray-50" data-id="${escapeHTML(item.id)}">
+                        <div class="flex justify-between items-start gap-2">
+                            <div>
+                                <h3 class="font-bold text-gray-800">${escapeHTML(item.name || 'Unnamed NFC Value')}</h3>
+                                <p class="text-xs text-gray-500">${escapeHTML(date)}</p>
+                            </div>
+                            <button class="delete-saved text-red-500 hover:text-red-700" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-1">${chips} ${more}</div>
+                        <p class="mt-2 text-xs text-gray-600 line-clamp-2">${escapeHTML((item.records || []).map(record => record.preview || record.text || `${record.byteLength || 0} bytes`).join(' | '))}</p>
+                        ${item.serialNumber ? `<p class="mt-1 text-xs text-amber-700">Serial saved for reference only: ${escapeHTML(item.serialNumber)}</p>` : ''}
+                        <div class="grid grid-cols-2 gap-2 mt-3">
+                            <button class="write-saved bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 px-2 rounded"><i class="fa-solid fa-clone"></i> Write</button>
+                            <button class="load-saved bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-2 rounded"><i class="fa-solid fa-arrow-up-from-bracket"></i> Load</button>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function findSavedById(id) {
+            return savedCache.find(item => item.id === id);
+        }
+
+        function loadSavedIntoLatest(value) {
+            latestScan = { ...value, id: makeId() };
+            latestScan.name = value.name || '';
+            updateLastScanPanel();
+            log(`Loaded saved value: ${value.name || 'Unnamed NFC Value'}`, 'success');
+            log(renderRecordsHtml(value.records || [], value.serialNumber || ''), 'data');
+        }
+
+        function updateManualTypeUi() {
+            const type = writeType.value;
+            mimeTypeWrap.classList.toggle('hidden', type !== 'mime');
+
+            if (type === 'json') {
+                writeData.placeholder = '{ "hello": "world" }';
+            } else if (type === 'vcard') {
+                writeData.placeholder = 'BEGIN:VCARD\nVERSION:3.0\nFN:Jane Doe\nTEL:+15555555555\nEND:VCARD';
+            } else if (type === 'url' || type === 'absolute-url') {
+                writeData.placeholder = 'https://example.com';
+            } else if (type === 'mime') {
+                writeData.placeholder = 'Payload for the selected MIME type';
+            } else {
+                writeData.placeholder = 'Enter text to write';
+            }
+        }
+
+        async function init() {
+            await openDb();
+            await refreshSavedValues();
+            updateManualTypeUi();
+
+            if ('NDEFReader' in window) {
+                isNfcSupported = true;
+                statusBadge.textContent = 'Supported';
+                statusBadge.className = 'w-fit px-3 py-1 rounded-full text-sm font-semibold bg-green-500 text-white';
+                log('Web NFC API detected and available.', 'success');
+            } else {
+                statusBadge.textContent = 'Unsupported';
+                statusBadge.className = 'w-fit px-3 py-1 rounded-full text-sm font-semibold bg-red-500 text-white';
+                unsupportedWarning.classList.remove('hidden');
+                [btnRead, btnWrite, btnWriteLast].forEach(button => {
+                    if (!button) return;
+                    button.disabled = true;
+                    button.classList.add('opacity-50', 'cursor-not-allowed');
+                });
+                log('Web NFC API is NOT supported on this browser/device.', 'error');
+            }
+        }
+
+        // Event Listeners
+        btnRead.addEventListener('click', startReading);
+        btnWrite.addEventListener('click', startWritingManual);
+        btnWriteLast.addEventListener('click', () => writeNdefValue(latestScan, latestScan?.name || 'latest scan'));
+        btnSaveScan.addEventListener('click', saveLatestScan);
+        btnSaveManual.addEventListener('click', saveManualValue);
+        btnStop.addEventListener('click', stopNfcOperation);
+        btnRefreshSaved.addEventListener('click', refreshSavedValues);
+        savedSearch.addEventListener('input', renderSavedValues);
+        writeType.addEventListener('change', updateManualTypeUi);
+
+        savedList.addEventListener('click', async event => {
+            const card = event.target.closest('[data-id]');
+            if (!card) return;
+            const value = findSavedById(card.dataset.id);
+            if (!value) return;
+
+            if (event.target.closest('.write-saved')) {
+                await writeNdefValue(value, value.name || 'saved value');
+            }
+
+            if (event.target.closest('.load-saved')) {
+                loadSavedIntoLatest(value);
+            }
+
+            if (event.target.closest('.delete-saved')) {
+                const ok = confirm(`Delete "${value.name || 'Unnamed NFC Value'}"?`);
+                if (!ok) return;
+                await deleteStoredValue(value.id);
+                log(`Deleted saved value: ${value.name || 'Unnamed NFC Value'}`, 'warning');
+                await refreshSavedValues();
+            }
+        });
+
+        btnClear.addEventListener('click', () => {
+            consoleOutput.innerHTML = '<div class="text-gray-500">Console cleared.</div>';
+        });
+
+        window.addEventListener('load', init);
     </script>
 </body>
 </html>
